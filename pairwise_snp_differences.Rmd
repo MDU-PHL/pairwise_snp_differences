@@ -55,7 +55,7 @@ A more in-depth tutorial on loading and manipulating DNA sequences in `R` can be
 
 ## Load metadata
 
-The calculate the statistics of interest, we need some metadata that groups the sequences/isolates into categories. These might be MLST categories, or any other grouping of interest (e.g., isolates could be grouped by geography or year). The grouping categories should be in a `CSV` or `tab` delimited file, with the one column containing the sequence IDs, as in the FASTA file above, and one or more columns with corresponding to each of the classification schemes of interest.
+To calculate the statistics of interest, we need some metadata that groups the sequences/isolates into categories. These might be MLST categories, or any other grouping of interest (e.g., isolates could be grouped by geography or year). The grouping categories should be in a `CSV` or `tab` delimited file, with the one column containing the sequence IDs, as in the FASTA file above, and one or more columns corresponding to each of the classification schemes of interest.
 
 For this example, we will calculate summary statistics for the pairwise differences among the three clades identified in the NJ tree above (defined by the three basal branches). I'll first show you how this metadata could be generated from a tree within `R`. But, most likely you will have this information ready from other sources.
 
