@@ -1,0 +1,187 @@
+---
+title: "Pairwise SNP difference summary"
+author: "Anders Goncalves da Silva"
+date: "26 August 2015"
+output: html_document
+---
+
+# The goal
+
+There might come a time when it would be interesting to measure just how different clades are, or how distinct are different classification schemes (e.g., MLST categories). We can use the output from `nullabor`, in particular, the alignment of the SNPs across isolates, to quantify the mean distance (and other quantiles of interest), in terms of distinct SNPs across groups of isolates. 
+
+# How to do it
+
+We can calculate summary measures of differentiation using `R`. In particular, we will use commands from two different packages:
+
+## Load necessary libraries
+
+```{r, load_libs, results='hide', message=FALSE}
+require(ape) # a basic phylogenetic package used to load sequence data and calculate distances
+require(spider) # a DNA barcoding package with some functionality of interest
+require(geiger) # a package for macroevolutionary simulation and estimating parameters related to diversification from comparative phylogenetic data.
+```
+
+If you don't have them, just use the `install.packages()` command to install them:
+
+```{r, install_pack_example, eval=FALSE}
+install.packages("ape")
+```
+
+
+## Load the sequence data
+
+Here, I am using some example data provided with the package `ape`. The data consists of 15 mitochondrial cytochrome `b` sequences from the woodmouse.
+
+```{r, data_loading}
+woodm <- read.FASTA(file = "woodm.fa") # woodm.fa is a FASTA file containing multiple aligned sequences, as outputted from nullabor
+```
+
+It is easy to perform some basic tree-building within `R`. For instance:
+
+```{r, basic_nj}
+#calculate distance
+woodm_raw_dist <- dist.dna(x = woodm, model = "raw")
+
+#use distance to build a Neighbour-Joining tree
+woodm_nj_tree <- nj(X = woodm_raw_dist)
+
+#plot the tree
+plot(woodm_nj_tree)
+```
+
+A more in-depth tutorial on using `R` to do phylogenetic-type analyses can be found [here](http://www.r-phylo.org/wiki/Main_Page).
+
+A more in-depth tutorial on loading and manipulating DNA sequences in `R` can be found [here](http://a-little-book-of-r-for-bioinformatics.readthedocs.org/en/latest/index.html).
+
+## Load metadata
+
+The calculate the statistics of interest, we need some metadata that groups the sequences/isolates into categories. These might be MLST categories, or any other grouping of interest (e.g., isolates could be grouped by geography or year). The grouping categories should be in a `CSV` or `tab` delimited file, with the one column containing the sequence IDs, as in the FASTA file above, and one or more columns with corresponding to each of the classification schemes of interest.
+
+For this example, we will calculate summary statistics for the pairwise differences among the three clades identified in the NJ tree above (defined by the three basal branches). I'll first show you how this metadata could be generated from a tree within `R`. But, most likely you will have this information ready from other sources.
+
+```{r, meta_data}
+# first, we will figure out the basal node for each of the three clades
+woodm_nj_tree$node.label<-((length(woodm_nj_tree$tip)+1):((length(woodm_nj_tree$tip)*2)-1))
+plot(woodm_nj_tree, show.node.label = T) # as we can see, these are 17, 20, and 22
+
+# we can then pull out the tips associated with each of basal nodes
+clade_a <- tips(phy = woodm_nj_tree, node = 17)
+names(clade_a) <- rep("clade_a", length(clade_a))
+clade_b <- tips(phy = woodm_nj_tree, node = 20)
+names(clade_b) <- rep("clade_b", length(clade_b))
+clade_c <- tips(phy = woodm_nj_tree, node = 22)
+names(clade_c) <- rep("clade_c", length(clade_c))
+
+#metadata object
+metadf <- do.call('rbind', lapply(list(clade_a, clade_b, clade_c), function(group) data.frame(seq_id = group, clade = names(group))))
+
+print(metadf)
+```
+
+In case that your data is already saved in a `CSV` or `tab` delimited file, you can load it with the following:
+
+```{r, laod_metadata}
+# I have saved the data.frame to a CSV file as an examle: woodm_grouping.csv
+
+# To load a CSV file do the following
+
+metadf <- read.table(file = "woodm_grouping.csv", sep = ",", header = T) 
+# if tab-delimited file change sep = ',' to sep = '\t'
+```
+
+Now, we can write a function that will take the distance object we calculated above, and return some summary statistics of interest.
+
+```{r, summary_snp_info}
+summ_distances <- function(dist_obj, categories){
+  #dist_obj is a distance object produced by using the dist.dna() function of ape
+  #categories is a data.frame with two columns:
+  #   - seq_id: that matches the sequence ids in dist_obj
+  #   - groups: that assigns the individual seq_ids to a group
+  dat <- as.matrix(dist_obj)
+  if(class(dist_obj) != 'dist') {
+    stop("dist_obj is not an object of type dist! Please use dist.dna() to create a distance object first.")
+  }
+  
+  if(!is.data.frame(categories)){
+    stop("categories must be a data.frame! Please create a data.frame with the metadata first.")
+  }
+  
+  if(ncol(categories) > 2) {
+    warning("Number of colums in categories is >2, taking the first two columns only")
+    categories <- categories[,c(1,2)]
+  }
+  
+  if(!all(sort(names(categories)) == sort(c("seq_id", "groups")))) {
+    warning("The columns of categories do not have names this function recognizes. It will assume that the first column contains seq_ids, and the second column the relevant categories.")
+    names(categories) <- c("seq_id", "categories")
+  }
+  
+  taxa <- unique(as.character(categories[,'groups']))
+  n_taxa <- length(taxa)
+  total_comp <- (n_taxa^2 + n_taxa)/2
+  out <- data.frame(grp1 = character(total_comp), 
+                    grp2 = character(total_comp),
+                    comp = character(total_comp),
+                    type = rep("inter-group", total_comp),
+                    mu = numeric(total_comp), 
+                    sd = numeric(total_comp), 
+                    min_dist = numeric(total_comp),
+                    max_dist = numeric(total_comp), stringsAsFactors = F)
+  n_comp = 1
+  for(i in 1:n_taxa){
+    g1 <- taxa[i]
+    seq_1 <- as.character(categories[categories$groups == g1, 'seq_id'])
+    for(j in i:n_taxa){
+      g2 <- taxa[j]
+      seq_2 <- as.character(categories[categories$groups == g2, 'seq_id'])
+      tmp_dat <- dat[seq_1, seq_2]
+      if(i == j) {
+        tmp_dat <- tmp_dat[lower.tri(tmp_dat)]
+        out[n_comp, 'type'] <- 'intra-group'
+      }
+      out[n_comp, "grp1"] <- g1
+      out[n_comp, "grp2"] <- g2
+      out[n_comp, "comp"] <- paste(g1, g2, sep='_')
+      out[n_comp, "mu"] <- mean(tmp_dat)
+      out[n_comp, "sd"] <- sd(tmp_dat)
+      out[n_comp, "min_dist"] <- min(tmp_dat)
+      out[n_comp, "max_dist"] <- max(tmp_dat)
+      n_comp = n_comp + 1
+    }
+  }
+  return(out)
+}
+```
+
+```{r, test_func}
+names(metadf) <- c("seq_id", "groups")
+
+results <- summ_distances(dist_obj = woodm_raw_dist, categories = metadf)
+
+```
+
+```{r, results_table, results='asis', echo=FALSE, message=FALSE}
+require(pander)
+pander(results, caption = "Table of summary pairwise SNP differences among groups of woodmouse cytb sequences.", split.tables = Inf)
+```
+
+
+We can then plot the results.
+
+```{r, plot_diff, message=FALSE}
+require(ggplot2)
+ggplot(results, aes(x = comp, y = mu, colour = type)) + 
+  geom_point() + 
+  geom_errorbar(aes(ymax = mu + sd, ymin = mu - sd, width = 0.05)) + 
+  xlab("Pairwise comparisons") + 
+  ylab("Mean proportional SNP differences\n(and standard deviation)") +
+  scale_colour_discrete(name = "Comparison type") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+# Session info
+
+```{r, session_info, echo = F}
+sessionInfo()
+```
+
