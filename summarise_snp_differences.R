@@ -51,7 +51,7 @@ diff_file = NULL
 # Options:
 #   Change the following options to set output
 #   
-outfile_basename = 'snp_diff'
+out_basename = 'snp_diff'
 tab_fmt = "csv" # options are "csv" or "md"
 tab_type = "pretty" # options "pretty" or "raw" --- "pretty" formats numbers in
                       # scientific format (e.g., 1.05e-9), while "raw" gives
@@ -94,11 +94,12 @@ summ_distances <- function(categories, dist_obj){
     warning("The columns of categories do not have names this function 
             recognizes. It will assume that the first column contains seq_ids, 
             and the second column the relevant categories.")
-    names(categories) <- c("seq_id", "categories")
+    names(categories) <- c("seq_id", "groups")
   }
   
   # calculations
   dat <- as.matrix(dist_obj)
+  print(categories)
   taxa <- unique(as.character(categories[,'groups']))
   n_taxa <- length(taxa)
   total_comp <- (n_taxa^2 + n_taxa)/2
@@ -137,6 +138,37 @@ summ_distances <- function(categories, dist_obj){
 
 ################################################################################
 
+################################################################################
+# read the categories table
+#
+
+read_cat_file <- function(categories) {
+  if(!file.exists(categories)) {
+    stop(paste("Could not find file:", categories, "\n"))
+  }
+  file_sep = ','
+  if(!grepl(pattern = 'csv', x = tolower(categories))) {
+    file_sep = '\t'
+  }
+  cat_df <- read.table(file = categories, 
+               header = TRUE, 
+               check.names = F, 
+               sep = file_sep)
+  if(ncol(cat_df) == 2) {
+    cat_list <- list(cat_df)
+    names(cat_list) <- names(cat_df)[2]
+  } else if(ncol(cat_df) > 2) {
+    warning("Number of identified columns in category file is >2, 
+            assuming that the first column contains the sequence IDs")
+    cats <- names(cat_df)[-1]
+    seqid <- names(cat_df)[1]
+    cat_list <- lapply(cats, function(cat) subset(cat_df, select = c(seqid, cat)))
+    names(cat_list) <- cats
+  }
+  return(cat_list)
+}
+
+################################################################################
 
 ################################################################################
 # if running off a FASTA file, it is necessary to calculate the pairwise distance
@@ -273,6 +305,9 @@ main <- function(categories,
   # Load some necessary libraries
   require(ape)
   
+  #load the categories
+  cats_list <- read_cat_file(categories = categories)
+  
   #load the data
   if(is.null(diff_file)) {
     dist_obj <- calc_pairwise_distance(seq_file = seq_file, model = "raw")
@@ -281,18 +316,22 @@ main <- function(categories,
   }
   
   #summarise the information
-  results <- summ_distances(categories = categories, dist_obj = dist_obj)
+  cats <- names(cats_list)
+  for(cat in cats) {
+    outf_b <- paste(out_base, cat, sep = "_")
+    results <- summ_distances(categories = cats_list[[cat]], dist_obj = dist_obj)
   
-  #output table
-  write_summ_table(summ_table = results, 
-                   file_type = tab_fmt, 
-                   method = tab_type,
-                   outfile = out_base)
+    #output table
+    write_summ_table(summ_table = results, 
+                     file_type = tab_fmt, 
+                     method = tab_type,
+                     outfile = outf_b)
   
-  #output figure
-  plot_figure(summ_table = results,
+    #output figure
+    plot_figure(summ_table = results,
               file_type = fig_fmt, 
-              outfile = out_base)
+              outfile = outf_b)
+  }
 }
 
 ################################################################################
@@ -361,10 +400,10 @@ if(!interactive()) {
 }
 
 #run the main function
-main(categories = categories, 
+main(categories = cat_file, 
      seq_file = seq_file, 
      diff_file = diff_file, 
-     out_base = outfile_basename, 
+     out_base = out_basename, 
      tab_fmt = tab_fmt, 
      tab_type = tab_type, 
      fig_fmt = fig_fmt)
