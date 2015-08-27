@@ -186,6 +186,42 @@ read_diff_file <- function(diff_file) {
 # output the results to a pretty table
 #
 
+write_summ_table <- function(summ_table, 
+                             outfile = NULL, 
+                             file_type = 'csv', 
+                             method = "pretty") {
+  # here, we take the output from the summarise_snp_differences function and 
+  # make a CSV table, which can be read into EXCEL, or someother spreadsheet
+  # application. 
+  # If the file_type is 'md', the table will be outputted in markdown format.
+  
+
+  if(method == 'pretty') {
+    pretty_column_names <- c("Group 1", "Group 2", "Comparison", "Mean (±SD)", "Range")
+    pretty_mean <- format(summ_table[,'mu'], scientific = T, digits = 3)
+    pretty_sd <- format(summ_table[,'sd'], scientific = T, digits = 3)
+    pretty_musd <- paste(pretty_mean, " (±", pretty_sd,")", sep = "")
+    pretty_min <- format(summ_table[,'min_dist'], scientific = T, digits = 3)
+    pretty_max <- format(summ_table[,'max_dist'], scientific = T, digits = 3)
+    pretty_range <- paste(pretty_min, pretty_max, sep = "; ")
+    tab <- data.frame(summ_table$grp1, summ_table$grp2, summ_table$type)
+    tab$musd <- pretty_musd
+    tab$range <- pretty_range
+    names(tab) <- pretty_column_names
+  } else {
+    column_names <- c("Group 1", "Group 2", "Comparison", "Mean", "SD", "Min", "Max")
+    tab <- summ_table[,c(1,2,4,5,6,7,8)]
+    names(tab) <- column_names
+  }
+  
+  if(file_type == 'md') {
+    require(pander)
+    capture.output(pander(tab, split.tables = Inf), file = outfile)
+  } else {
+    write.table(x = tab, file = outfile, sep = ",", quote = F, row.names = F)
+  }
+}
+
 ################################################################################
 
 ################################################################################
@@ -193,7 +229,7 @@ read_diff_file <- function(diff_file) {
 #
 
 plot_figure <- function(summ_table, outfile = NULL, file_type = 'png') {
-  # here, we take the output from the summarise_snp_differences function, and 
+  # here, we take the output from the summarise_snp_differences function and 
   # make a plot that includes the mean, the sd, and the min/max for each of 
   # the possible comparisons
   # If outfile is specified, the figure is outputted as a png or pdf.
