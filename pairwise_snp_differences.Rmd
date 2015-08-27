@@ -171,10 +171,12 @@ We can then plot the results.
 ```{r, plot_diff, message=FALSE}
 require(ggplot2)
 ggplot(results, aes(x = comp, y = mu, colour = type)) + 
-  geom_point() + 
+  geom_point(size = 4) + 
   geom_errorbar(aes(ymax = mu + sd, ymin = mu - sd, width = 0.05)) + 
+  geom_point(aes(x = comp, min_dist), size = 3) +
+  geom_point(aes(x = comp, max_dist), size = 3) +
   xlab("Pairwise comparisons") + 
-  ylab("Mean proportional SNP differences\n(and standard deviation)") +
+  ylab("Mean proportional SNP differences\n(errorbars: sd; points: min/max)") +
   scale_colour_discrete(name = "Comparison type") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
