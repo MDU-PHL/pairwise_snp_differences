@@ -37,6 +37,15 @@
 
 
 ################################################################################
+# Load some necessary libraries
+# 
+require(ape)
+
+################################################################################
+
+
+
+################################################################################
 # If not running off the command line, change these parameters to point the 
 # approriate files, e.g.:
 #   cat = '/home/user/cat.csv'
@@ -55,15 +64,18 @@ diff_file = NULL
 ################################################################################
 # The main function
 # 
-summ_distances <- function(dist_obj, categories){
+summ_distances <- function(categories, dist_obj){
   #dist_obj is a distance object produced by using the dist.dna() function of ape
   #categories is a data.frame with two columns:
   #   - seq_id: that matches the sequence ids in dist_obj
   #   - groups: that assigns the individual seq_ids to a group
-  dat <- as.matrix(dist_obj)
-  if(class(dist_obj) != 'dist') {
-    stop("dist_obj is not an object of type dist! 
-         Please use dist.dna() to create a distance object first.")
+  
+  # some sanity checks
+  if(class(dist_obj) != 'dist' & class(dist_obj) != 'matrix') {
+    stop("dist_obj is not an object of type dist or matrix! 
+         Please use dist.dna() to create a distance object first OR
+         input a CSV file with count of differences produced by 
+         nullabor")
   }
   
   if(!is.data.frame(categories)){
@@ -84,6 +96,7 @@ summ_distances <- function(dist_obj, categories){
     names(categories) <- c("seq_id", "categories")
   }
   
+  dat <- as.matrix(dist_obj)
   taxa <- unique(as.character(categories[,'groups']))
   n_taxa <- length(taxa)
   total_comp <- (n_taxa^2 + n_taxa)/2
@@ -122,6 +135,52 @@ summ_distances <- function(dist_obj, categories){
 
 ################################################################################
 
+
+################################################################################
+# if running off a FASTA file, it is necessary to calculate the pairwise distance
+# matrix.
+
+calc_pairwise_distance <- function(seq_file, model = 'raw') {
+  # this function takes as input a string defining a path to a FASTA file
+  # and a string to pass on to the function dna.dist() specifying the distance
+  # model to use. 
+  # The model is normally assumed to be 'raw', which means it takes the 
+  # proportional pairwise differences. In most cases at MDU, this is a reasonable
+  # measure if, however, finite mutation models are required to account for 
+  # mutation saturation, other methods can be used. Type ?dna.dist to read the 
+  # manual page.
+   
+  if(!file.exits(seq_data)) {
+    stop(paste("Could not find file:", seq_file, "\n"))  
+    }
+  seq_data <- read.FASTA(file = seq_file)
+  raw_dist <- dist.dna(x = seq_data, model = "raw")
+  return(raw_dist)
+}
+
+################################################################################
+# if running off a CSV/TSV file with counts of SNP differences
+#
+
+read_diff_file <- function(diff_file) {
+  if(!file.exists(diff_file)) {
+    stop(paste("Could not find file:", diff_file, "\n"))
+  }
+  file_sep = ','
+  if(!grepl(pattern = 'csv', x = tolower(diff_file))) {
+    file_sep = '\t'
+  }
+  diff_mat <- as.matrix(
+                read.table(file = diff_file, 
+                         header = TRUE, 
+                         row.names = 1, 
+                         check.names = F, 
+                         sep = file_sep)
+                )
+  return(diff_mat)
+}
+
+################################################################################
 
 ################################################################################
 # If running from the command line:
