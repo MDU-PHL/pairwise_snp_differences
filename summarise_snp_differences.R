@@ -183,6 +183,47 @@ read_diff_file <- function(diff_file) {
 ################################################################################
 
 ################################################################################
+# output the results to a pretty table
+#
+
+################################################################################
+
+################################################################################
+# output the results to a pretty figure
+#
+
+plot_figure <- function(summ_table, outfile = NULL, file_type = 'png') {
+  # here, we take the output from the summarise_snp_differences function, and 
+  # make a plot that includes the mean, the sd, and the min/max for each of 
+  # the possible comparisons
+  # If outfile is specified, the figure is outputted as a png or pdf.
+  require(ggplot2)
+  p1 <- ggplot(summ_table, aes(x = comp, y = mu, colour = type)) + 
+          geom_point(size = 4) + 
+          geom_errorbar(aes(ymax = mu + sd, ymin = mu - sd, width = 0.05)) + 
+          geom_point(aes(x = comp, min_dist), size = 3) +
+          geom_point(aes(x = comp, max_dist), size = 3) +
+          xlab("Pairwise comparisons") + 
+          ylab("Mean proportional SNP differences\n(errorbars: sd; points: min/max)") +
+          scale_colour_discrete(name = "Comparison type") +
+          theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  if(is.null(outfile)) {
+    print(p1)
+  } else {
+    if (file_type == 'png') {
+      png(filename = outfile, width = 2048, height = 1536, res = 300)
+    } else {
+      pdf(file = outfile, width = 7, height = 5.5)
+    }
+    print(p1)
+    dev.off()
+  }
+}
+
+################################################################################
+
+
+################################################################################
 # If running from the command line:
 # 
 
