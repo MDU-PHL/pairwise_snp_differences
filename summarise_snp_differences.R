@@ -4,7 +4,7 @@
 ####  An R script to summarise pairwise SNP differences from nullabor      #####
 ####  output.                                                              #####
 ####                                                                       #####
-####  Input:                                                               #####
+####  Minimum input:                                                       #####
 ####    - cat: a CSV or tab-delimited file with a column of sequence IDs   #####
 ####        that match the IDs in the FASTA file, and one or more columns  #####
 ####        indicating to which group the sequence belongs to.             #####
@@ -99,7 +99,6 @@ summ_distances <- function(categories, dist_obj){
   
   # calculations
   dat <- as.matrix(dist_obj)
-  print(categories)
   taxa <- unique(as.character(categories[,'groups']))
   n_taxa <- length(taxa)
   total_comp <- (n_taxa^2 + n_taxa)/2
