@@ -37,16 +37,7 @@
 
 
 ################################################################################
-# Load some necessary libraries
-# 
-require(ape)
-
-################################################################################
-
-
-
-################################################################################
-# If not running off the command line, change these parameters to point the 
+# If not running off the command line, change these parameters to point to the 
 # approriate files, e.g.:
 #   cat = '/home/user/cat.csv'
 
@@ -57,13 +48,23 @@ cat_file = NULL
 seq_file = NULL
 diff_file = NULL
 
+# Options:
+#   Change the following options to set output
+#   
+outfile_basename = 'snp_diff'
+tab_fmt = "csv" # options are "csv" or "md"
+tab_type = "pretty" # options "pretty" or "raw" --- "pretty" formats numbers in
+                      # scientific format (e.g., 1.05e-9), while "raw" gives
+                      # raw value outputs
+fig_fmt = "png" # options are "png" or "pdf"
+
 ################################################################################
 
 
 
 ################################################################################
-# The main function
-# 
+# The function that summarises the data
+#  
 summ_distances <- function(categories, dist_obj){
   #dist_obj is a distance object produced by using the dist.dna() function of ape
   #categories is a data.frame with two columns:
@@ -96,6 +97,7 @@ summ_distances <- function(categories, dist_obj){
     names(categories) <- c("seq_id", "categories")
   }
   
+  # calculations
   dat <- as.matrix(dist_obj)
   taxa <- unique(as.character(categories[,'groups']))
   n_taxa <- length(taxa)
@@ -150,7 +152,7 @@ calc_pairwise_distance <- function(seq_file, model = 'raw') {
   # mutation saturation, other methods can be used. Type ?dna.dist to read the 
   # manual page.
    
-  if(!file.exits(seq_data)) {
+  if(!file.exists(seq_file)) {
     stop(paste("Could not find file:", seq_file, "\n"))  
     }
   seq_data <- read.FASTA(file = seq_file)
@@ -187,7 +189,7 @@ read_diff_file <- function(diff_file) {
 #
 
 write_summ_table <- function(summ_table, 
-                             outfile = NULL, 
+                             outfile, 
                              file_type = 'csv', 
                              method = "pretty") {
   # here, we take the output from the summarise_snp_differences function and 
@@ -195,7 +197,7 @@ write_summ_table <- function(summ_table,
   # application. 
   # If the file_type is 'md', the table will be outputted in markdown format.
   
-
+  outfile = paste(outfile, file_type, sep = ".")
   if(method == 'pretty') {
     pretty_column_names <- c("Group 1", "Group 2", "Comparison", "Mean (±SD)", "Range")
     pretty_mean <- format(summ_table[,'mu'], scientific = T, digits = 3)
@@ -213,7 +215,6 @@ write_summ_table <- function(summ_table,
     tab <- summ_table[,c(1,2,4,5,6,7,8)]
     names(tab) <- column_names
   }
-  
   if(file_type == 'md') {
     require(pander)
     capture.output(pander(tab, split.tables = Inf), file = outfile)
@@ -246,6 +247,7 @@ plot_figure <- function(summ_table, outfile = NULL, file_type = 'png') {
   if(is.null(outfile)) {
     print(p1)
   } else {
+    outfile = paste(outfile, file_type, sep = ".")
     if (file_type == 'png') {
       png(filename = outfile, width = 2048, height = 1536, res = 300)
     } else {
@@ -258,6 +260,40 @@ plot_figure <- function(summ_table, outfile = NULL, file_type = 'png') {
 
 ################################################################################
 
+################################################################################
+# the main() function
+# 
+main <- function(categories, 
+                 seq_file = NULL, 
+                 diff_file = NULL, 
+                 out_base = NULL, 
+                 tab_fmt = NULL,
+                 tab_type = NULL, 
+                 fig_fmt = NULL) {
+  # Load some necessary libraries
+  require(ape)
+  
+  #load the data
+  if(is.null(diff_file)) {
+    dist_obj <- calc_pairwise_distance(seq_file = seq_file, model = "raw")
+  } else {
+    dist_obj <- read_diff_file(diff_file = diff_file)
+  }
+  
+  #summarise the information
+  results <- summ_distances(categories = categories, dist_obj = dist_obj)
+  
+  #output table
+  write_summ_table(summ_table = results, 
+                   file_type = tab_fmt, 
+                   method = tab_type,
+                   outfile = out_base)
+  
+  #output figure
+  plot_figure(summ_table = results,
+              file_type = fig_fmt, 
+              outfile = out_base)
+}
 
 ################################################################################
 # If running from the command line:
@@ -268,7 +304,7 @@ if(!interactive()) {
   args <- commandArgs(trailingOnly = TRUE)
   
   # check the argument length
-  if(length(args) < 1 | length(args) > 3) {
+  if(length(args) < 2 | length(args) > 7) {
     args <- c("--help")
   }
   
@@ -277,12 +313,22 @@ if(!interactive()) {
     cat("
         Summarise SNP differences
         
-        Arguments:
+        Necessary arguments:
         filename    - a string defining the path to the categories file
+
+        Optional arguments:
         --seq=filename    - a string defining the path to
-                            the FASTA file <optional>
+                            the FASTA file (ignored if --diff is defined)
         --diff=filename   - a string defining the path to 
-                            the SNP differences matrix <optional>
+                            the SNP differences matrix (must be defined if no
+                            --seq is defined)
+        --out_basename    - basename for output files (default: snp_diff)
+        --tab_fmt         - output format for table (default: \"csv\")
+                            \"csv\" or \"md\" for CSV or Markdown, respectively
+        --tab_type        - make table \"pretty\" by formatting numbers or 
+                              or output \"raw\" numbers (default: \"pretty\")
+        --fig_fmt         - output format for figure (default: \"png\")
+                            \"png\" or \"pdf\" for PNG or PDF, respectively
         --help            - print this text
         
         Example:
@@ -291,22 +337,37 @@ if(!interactive()) {
     q(save="no")
   }
   
-  cat(args, "\n")
-  
+  #parse arguments
   cat_file = args[1]
-  
   args <- args[2:length(args)]
-  
   parse_args <- function(x) strsplit(sub("^--", "", x), "=")
-  args_df <- as.data.frame(do.call("rbind", parse_args(args)), stringsAsFactors = FALSE)
+  args_df <- as.data.frame(
+                            matrix(
+                                    do.call("rbind", parse_args(args)), 
+                                    ncol = 2, 
+                                    byrow = T), 
+                            stringsAsFactors = F)
   names(args_df) <- c("key", "value")
-  
   if('diff' %in% args_df$key) {
     diff_file = args_df[args_df$key == 'diff', 'value']
   } else {
     seq_file = args_df[args_df$key == 'seq', 'value']
   }
+  for(arg in c("out_basename", "tab_fmt", "tab_type", "fig_fmt")) {
+    if (arg %in% args_df$key) {
+      assign(arg, args_df[args_df$key == arg, 'value'])
+    }
+  }
 }
 
-cat(cat_file, seq_file, diff_file, "\n")
+#run the main function
+main(categories = categories, 
+     seq_file = seq_file, 
+     diff_file = diff_file, 
+     out_base = outfile_basename, 
+     tab_fmt = tab_fmt, 
+     tab_type = tab_type, 
+     fig_fmt = fig_fmt)
 
+cat("The script has ended successfully!\n")
+################################################################################
