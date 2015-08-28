@@ -7,7 +7,11 @@ output: html_document
 
 # The goal
 
-There might come a time when it would be interesting to measure just how different clades are, or how distinct are different classification schemes (e.g., MLST categories). We can use the output from `nullabor`, in particular, the alignment of the SNPs across isolates, to quantify the mean distance (and other quantiles of interest), in terms of distinct SNPs across groups of isolates. 
+There might come a time when it would be interesting to measure just how different clades are, or how distinct are different classification schemes (e.g., MLST categories). We can use the output from `nullabor`, in particular, the alignment of the SNPs across isolates, to quantify the mean distance (and other quantiles of interest), in terms of distinct SNPs across groups of isolates.
+
+# Download the script
+
+The script can be downloaded [here](summarise_snp_differences.R). The script can be run both interactively, within an `R` session and from the command line. Some instructions are provided in the script. This script has **NOT** been run on a Windows machine. Please let me know if you have problems.
 
 # How to do it
 
@@ -49,10 +53,6 @@ woodm_nj_tree <- nj(X = woodm_raw_dist)
 plot(woodm_nj_tree)
 ```
 
-A more in-depth tutorial on using `R` to do phylogenetic-type analyses can be found [here](http://www.r-phylo.org/wiki/Main_Page).
-
-A more in-depth tutorial on loading and manipulating DNA sequences in `R` can be found [here](http://a-little-book-of-r-for-bioinformatics.readthedocs.org/en/latest/index.html).
-
 ## Load metadata
 
 To calculate the statistics of interest, we need some metadata that groups the sequences/isolates into categories. These might be MLST categories, or any other grouping of interest (e.g., isolates could be grouped by geography or year). The grouping categories should be in a `CSV` or `tab` delimited file, with the one column containing the sequence IDs, as in the FASTA file above, and one or more columns corresponding to each of the classification schemes of interest.
@@ -92,36 +92,47 @@ metadf <- read.table(file = "woodm_grouping.csv", sep = ",", header = T)
 Now, we can write a function that will take the distance object we calculated above, and return some summary statistics of interest.
 
 ```{r, summary_snp_info}
-summ_distances <- function(dist_obj, categories){
+summ_distances <- function(categories, dist_obj){
   #dist_obj is a distance object produced by using the dist.dna() function of ape
   #categories is a data.frame with two columns:
   #   - seq_id: that matches the sequence ids in dist_obj
   #   - groups: that assigns the individual seq_ids to a group
-  dat <- as.matrix(dist_obj)
-  if(class(dist_obj) != 'dist') {
-    stop("dist_obj is not an object of type dist! Please use dist.dna() to create a distance object first.")
+  
+  # some sanity checks
+  if(class(dist_obj) != 'dist' & class(dist_obj) != 'matrix') {
+    stop("dist_obj is not an object of type dist or matrix! 
+         Please use dist.dna() to create a distance object first OR
+         input a CSV file with count of differences produced by 
+         nullabor")
   }
   
   if(!is.data.frame(categories)){
-    stop("categories must be a data.frame! Please create a data.frame with the metadata first.")
+    stop("categories must be a data.frame! 
+         Please create a data.frame with the metadata first.")
   }
   
   if(ncol(categories) > 2) {
-    warning("Number of colums in categories is >2, taking the first two columns only")
+    warning("Number of colums in categories is >2, 
+            taking the first two columns only")
     categories <- categories[,c(1,2)]
   }
   
   if(!all(sort(names(categories)) == sort(c("seq_id", "groups")))) {
-    warning("The columns of categories do not have names this function recognizes. It will assume that the first column contains seq_ids, and the second column the relevant categories.")
-    names(categories) <- c("seq_id", "categories")
+    warning("The columns of categories do not have names this function 
+            recognizes. It will assume that the first column contains seq_ids, 
+            and the second column the relevant categories.")
+    names(categories) <- c("seq_id", "groups")
   }
   
+  # calculations
+  dat <- as.matrix(dist_obj)
   taxa <- unique(as.character(categories[,'groups']))
   n_taxa <- length(taxa)
   total_comp <- (n_taxa^2 + n_taxa)/2
   out <- data.frame(grp1 = character(total_comp), 
                     grp2 = character(total_comp),
                     comp = character(total_comp),
+                    N = numeric(total_comp),
                     type = rep("inter-group", total_comp),
                     mu = numeric(total_comp), 
                     sd = numeric(total_comp), 
@@ -135,20 +146,35 @@ summ_distances <- function(dist_obj, categories){
       g2 <- taxa[j]
       seq_2 <- as.character(categories[categories$groups == g2, 'seq_id'])
       tmp_dat <- dat[seq_1, seq_2]
-      if(i == j) {
-        tmp_dat <- tmp_dat[lower.tri(tmp_dat)]
-        out[n_comp, 'type'] <- 'intra-group'
-      }
       out[n_comp, "grp1"] <- g1
       out[n_comp, "grp2"] <- g2
+      out[n_comp, "N"] <- length(tmp_dat)
       out[n_comp, "comp"] <- paste(g1, g2, sep='_')
-      out[n_comp, "mu"] <- mean(tmp_dat)
-      out[n_comp, "sd"] <- sd(tmp_dat)
-      out[n_comp, "min_dist"] <- min(tmp_dat)
-      out[n_comp, "max_dist"] <- max(tmp_dat)
+      if(i == j) {
+        if(length(tmp_dat) > 1){
+          #if length is one, this results in a empty set. 
+          #so, added this condition to fix the problem
+          tmp_dat <- tmp_dat[lower.tri(tmp_dat)]
+        }
+        out[n_comp, 'type'] <- 'intra-group'
+        out[n_comp, "comp"] <- g1
+      }
+      if (length(tmp_dat) > 1 & max(tmp_dat) > min(tmp_dat)) {
+        out[n_comp, "mu"] <- mean(tmp_dat)
+        out[n_comp, "sd"] <- sd(tmp_dat)
+        out[n_comp, "min_dist"] <- min(tmp_dat)
+        out[n_comp, "max_dist"] <- max(tmp_dat)
+      } else {
+          out[n_comp, "mu"] <- mean(tmp_dat)
+          out[n_comp, "sd"] <- 0
+          out[n_comp, "min_dist"] <- min(tmp_dat)
+          out[n_comp, "max_dist"] <- max(tmp_dat)
+        }
       n_comp = n_comp + 1
-    }
+      }
   }
+  out$type <- factor(out$type, levels = c("intra-group", "inter-group"))
+  out$comp <- factor(out$comp, levels = out$comp[order(out$type, out$comp)])
   return(out)
 }
 ```
@@ -162,7 +188,7 @@ results <- summ_distances(dist_obj = woodm_raw_dist, categories = metadf)
 
 ```{r, results_table, results='asis', echo=FALSE, message=FALSE}
 require(pander)
-pander(results, caption = "Table of summary pairwise SNP differences among groups of woodmouse cytb sequences.", split.tables = Inf)
+pander(subset(results, select = -c(comp)), caption = "Table of summary pairwise SNP differences among groups of woodmouse cytb sequences.", split.tables = Inf)
 ```
 
 
@@ -181,9 +207,18 @@ ggplot(results, aes(x = comp, y = mu, colour = type)) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
+# Additional links of potential interest
+
+A more in-depth tutorial on using `R` to do phylogenetic-type analyses can be found [here](http://www.r-phylo.org/wiki/Main_Page).
+
+A more in-depth tutorial on loading and manipulating DNA sequences in `R` can be found [here](http://a-little-book-of-r-for-bioinformatics.readthedocs.org/en/latest/index.html).
+
 # Session info
 
 ```{r, session_info, echo = F}
 sessionInfo()
 ```
 
+# Contact info
+
+Anders Goncalves da Silva (andersgs at gmail dot com). 
