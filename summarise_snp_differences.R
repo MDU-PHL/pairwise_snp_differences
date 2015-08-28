@@ -57,6 +57,9 @@ tab_type = "pretty" # options "pretty" or "raw" --- "pretty" formats numbers in
                       # scientific format (e.g., 1.05e-9), while "raw" gives
                       # raw value outputs
 fig_fmt = "png" # options are "png" or "pdf"
+exclude_ids = NULL # a string to a path to a file with one sequence ID per
+                   # line. these sequences will be excluded from the 
+                   # analysis.
 
 ################################################################################
 
@@ -105,6 +108,7 @@ summ_distances <- function(categories, dist_obj){
   out <- data.frame(grp1 = character(total_comp), 
                     grp2 = character(total_comp),
                     comp = character(total_comp),
+                    N = numeric(total_comp),
                     type = rep("inter-group", total_comp),
                     mu = numeric(total_comp), 
                     sd = numeric(total_comp), 
@@ -119,19 +123,32 @@ summ_distances <- function(categories, dist_obj){
       seq_2 <- as.character(categories[categories$groups == g2, 'seq_id'])
       tmp_dat <- dat[seq_1, seq_2]
       if(i == j) {
-        tmp_dat <- tmp_dat[lower.tri(tmp_dat)]
+        if(length(tmp_dat) > 1){
+          #if length is one, this results in a empty set. 
+          #so, added this condition to fix the problem
+          tmp_dat <- tmp_dat[lower.tri(tmp_dat)]
+        }
         out[n_comp, 'type'] <- 'intra-group'
       }
       out[n_comp, "grp1"] <- g1
       out[n_comp, "grp2"] <- g2
       out[n_comp, "comp"] <- paste(g1, g2, sep='_')
-      out[n_comp, "mu"] <- mean(tmp_dat)
-      out[n_comp, "sd"] <- sd(tmp_dat)
-      out[n_comp, "min_dist"] <- min(tmp_dat)
-      out[n_comp, "max_dist"] <- max(tmp_dat)
+      out[n_comp, "N"] <- length(tmp_dat)
+      
+      if (length(tmp_dat) > 1 & max(tmp_dat) > min(tmp_dat)) {
+        out[n_comp, "mu"] <- mean(tmp_dat)
+        out[n_comp, "sd"] <- sd(tmp_dat)
+        out[n_comp, "min_dist"] <- min(tmp_dat)
+        out[n_comp, "max_dist"] <- max(tmp_dat)
+      } else {
+          out[n_comp, "mu"] <- mean(tmp_dat)
+          out[n_comp, "sd"] <- 0
+          out[n_comp, "min_dist"] <- min(tmp_dat)
+          out[n_comp, "max_dist"] <- max(tmp_dat)
+        }
       n_comp = n_comp + 1
+      }
     }
-  }
   return(out)
 }
 
@@ -141,9 +158,12 @@ summ_distances <- function(categories, dist_obj){
 # read the categories table
 #
 
-read_cat_file <- function(categories) {
+read_cat_file <- function(categories, exclude_ids = NULL) {
   if(!file.exists(categories)) {
     stop(paste("Could not find file:", categories, "\n"))
+  }
+  if(!is.null(exclude_ids) && !file.exists(exclude_ids)) {
+    stop(paste("Could not find file:", exclude_ids, "\n"))
   }
   file_sep = ','
   if(!grepl(pattern = 'csv', x = tolower(categories))) {
@@ -152,7 +172,24 @@ read_cat_file <- function(categories) {
   cat_df <- read.table(file = categories, 
                header = TRUE, 
                check.names = F, 
-               sep = file_sep)
+               sep = file_sep,
+               stringsAsFactors = F)
+  if(!is.null(exclude_ids)) {
+    exclude_ids <- read.table(file = exclude_ids, 
+                              header = F, 
+                              stringsAsFactors = F)
+    cat_df <- cat_df[!(cat_df[,1] %in% exclude_ids), ]
+  }
+  #if file is an mlst.tab output from nullabor
+  if(all(c("FILE", "ST") %in% names(cat_df))) {
+    seq_id <- gsub(pattern = "\\/contigs\\.fa", replacement = "", cat_df$FILE)
+    ST <- cat_df$ST
+    ix_calls <- which(ST != "-")
+    cat_df <- data.frame(seq_id = seq_id[ix_calls], ST = ST[ix_calls], stringsAsFactors = F)
+    cat_list <- list(ST = cat_df)
+    return(cat_list)
+  }
+  #otherwise, treat as a file prepared by the user
   if(ncol(cat_df) == 2) {
     cat_list <- list(cat_df)
     names(cat_list) <- names(cat_df)[2]
@@ -230,20 +267,20 @@ write_summ_table <- function(summ_table,
   
   outfile = paste(outfile, file_type, sep = ".")
   if(method == 'pretty') {
-    pretty_column_names <- c("Group 1", "Group 2", "Comparison", "Mean (±SD)", "Range")
+    pretty_column_names <- c("Group 1", "Group 2", "N", "Comparison", "Mean (±SD)", "Range")
     pretty_mean <- format(summ_table[,'mu'], scientific = T, digits = 3)
     pretty_sd <- format(summ_table[,'sd'], scientific = T, digits = 3)
     pretty_musd <- paste(pretty_mean, " (±", pretty_sd,")", sep = "")
     pretty_min <- format(summ_table[,'min_dist'], scientific = T, digits = 3)
     pretty_max <- format(summ_table[,'max_dist'], scientific = T, digits = 3)
     pretty_range <- paste(pretty_min, pretty_max, sep = "; ")
-    tab <- data.frame(summ_table$grp1, summ_table$grp2, summ_table$type)
+    tab <- data.frame(summ_table$grp1, summ_table$grp2, summ_table$type, summ_table$N)
     tab$musd <- pretty_musd
     tab$range <- pretty_range
     names(tab) <- pretty_column_names
   } else {
-    column_names <- c("Group 1", "Group 2", "Comparison", "Mean", "SD", "Min", "Max")
-    tab <- summ_table[,c(1,2,4,5,6,7,8)]
+    column_names <- c("Group 1", "Group 2", "Comparison", "N", "Mean", "SD", "Min", "Max")
+    tab <- summ_table[,c(1,2,4,5,6,7,8,9)]
     names(tab) <- column_names
   }
   if(file_type == 'md') {
@@ -300,12 +337,13 @@ main <- function(categories,
                  out_base = NULL, 
                  tab_fmt = NULL,
                  tab_type = NULL, 
-                 fig_fmt = NULL) {
+                 fig_fmt = NULL,
+                 exclude_ids = NULL) {
   # Load some necessary libraries
   require(ape)
   
   #load the categories
-  cats_list <- read_cat_file(categories = categories)
+  cats_list <- read_cat_file(categories = categories, exclude_ids = exclude_ids)
   
   #load the data
   if(is.null(diff_file)) {
@@ -367,6 +405,8 @@ if(!interactive()) {
                               or output \"raw\" numbers (default: \"pretty\")
         --fig_fmt         - output format for figure (default: \"png\")
                             \"png\" or \"pdf\" for PNG or PDF, respectively
+        --exclude_ids     - string defining the path to a file with sequence
+                            ids to be excluded, one per line (default: None)
         --help            - print this text
         
         Example:
@@ -378,6 +418,7 @@ if(!interactive()) {
   #parse arguments
   cat_file = args[1]
   args <- args[2:length(args)]
+  print(args)
   parse_args <- function(x) strsplit(sub("^--", "", x), "=")
   args_df <- as.data.frame(
                             matrix(
@@ -386,12 +427,14 @@ if(!interactive()) {
                                     byrow = T), 
                             stringsAsFactors = F)
   names(args_df) <- c("key", "value")
+  print(args_df)
+  q(save="no")
   if('diff' %in% args_df$key) {
     diff_file = args_df[args_df$key == 'diff', 'value']
   } else {
     seq_file = args_df[args_df$key == 'seq', 'value']
   }
-  for(arg in c("out_basename", "tab_fmt", "tab_type", "fig_fmt")) {
+  for(arg in c("out_basename", "tab_fmt", "tab_type", "fig_fmt", "exclude_ids")) {
     if (arg %in% args_df$key) {
       assign(arg, args_df[args_df$key == arg, 'value'])
     }
@@ -405,7 +448,8 @@ main(categories = cat_file,
      out_base = out_basename, 
      tab_fmt = tab_fmt, 
      tab_type = tab_type, 
-     fig_fmt = fig_fmt)
+     fig_fmt = fig_fmt,
+     exclude_ids = exclude_ids)
 
 cat("The script has ended successfully!\n")
 ################################################################################
