@@ -122,6 +122,10 @@ summ_distances <- function(categories, dist_obj){
       g2 <- taxa[j]
       seq_2 <- as.character(categories[categories$groups == g2, 'seq_id'])
       tmp_dat <- dat[seq_1, seq_2]
+      out[n_comp, "grp1"] <- g1
+      out[n_comp, "grp2"] <- g2
+      out[n_comp, "N"] <- length(tmp_dat)
+      out[n_comp, "comp"] <- paste(g1, g2, sep='_')
       if(i == j) {
         if(length(tmp_dat) > 1){
           #if length is one, this results in a empty set. 
@@ -129,12 +133,8 @@ summ_distances <- function(categories, dist_obj){
           tmp_dat <- tmp_dat[lower.tri(tmp_dat)]
         }
         out[n_comp, 'type'] <- 'intra-group'
+        out[n_comp, "comp"] <- g1
       }
-      out[n_comp, "grp1"] <- g1
-      out[n_comp, "grp2"] <- g2
-      out[n_comp, "comp"] <- paste(g1, g2, sep='_')
-      out[n_comp, "N"] <- length(tmp_dat)
-      
       if (length(tmp_dat) > 1 & max(tmp_dat) > min(tmp_dat)) {
         out[n_comp, "mu"] <- mean(tmp_dat)
         out[n_comp, "sd"] <- sd(tmp_dat)
@@ -148,7 +148,9 @@ summ_distances <- function(categories, dist_obj){
         }
       n_comp = n_comp + 1
       }
-    }
+  }
+  out$type <- factor(out$type, levels = c("intra-group", "inter-group"))
+  out$comp <- factor(out$comp, levels = out$comp[order(out$type, out$comp)])
   return(out)
 }
 
@@ -178,7 +180,6 @@ read_cat_file <- function(categories, exclude_ids = NULL) {
     exclude_ids <- read.table(file = exclude_ids, 
                               header = F, 
                               stringsAsFactors = F)
-    cat_df <- cat_df[!(cat_df[,1] %in% exclude_ids), ]
   }
   #if file is an mlst.tab output from nullabor
   if(all(c("FILE", "ST") %in% names(cat_df))) {
@@ -186,10 +187,16 @@ read_cat_file <- function(categories, exclude_ids = NULL) {
     ST <- cat_df$ST
     ix_calls <- which(ST != "-")
     cat_df <- data.frame(seq_id = seq_id[ix_calls], ST = ST[ix_calls], stringsAsFactors = F)
+    if(!is.null(exclude_ids)) {
+      cat_df <- cat_df[!(cat_df[,1] %in% exclude_ids), ]
+    }
     cat_list <- list(ST = cat_df)
     return(cat_list)
   }
   #otherwise, treat as a file prepared by the user
+  if(!is.null(exclude_ids)) {
+    cat_df <- cat_df[!(cat_df[,1] %in% exclude_ids), ]
+  }
   if(ncol(cat_df) == 2) {
     cat_list <- list(cat_df)
     names(cat_list) <- names(cat_df)[2]
@@ -304,14 +311,15 @@ plot_figure <- function(summ_table, outfile = NULL, file_type = 'png') {
   # If outfile is specified, the figure is outputted as a png or pdf.
   require(ggplot2)
   p1 <- ggplot(summ_table, aes(x = comp, y = mu, colour = type)) + 
-          geom_point(size = 4) + 
+          geom_point(size = 3 ,shape = 18) + 
           geom_errorbar(aes(ymax = mu + sd, ymin = mu - sd, width = 0.05)) + 
-          geom_point(aes(x = comp, min_dist), size = 3) +
-          geom_point(aes(x = comp, max_dist), size = 3) +
+          geom_point(aes(x = comp, min_dist), size = 2) +
+          geom_point(aes(x = comp, max_dist), size = 2) +
           xlab("Pairwise comparisons") + 
-          ylab("Mean proportional SNP differences\n(errorbars: sd; points: min/max)") +
+          ylab("Mean SNP distance\n(errorbars: sd; points: min/max)") +
           scale_colour_discrete(name = "Comparison type") +
-          theme(axis.text.x = element_text(angle = 45, hjust = 1))
+          theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 3), 
+                legend.position="bottom")
   if(is.null(outfile)) {
     print(p1)
   } else {
@@ -418,17 +426,11 @@ if(!interactive()) {
   #parse arguments
   cat_file = args[1]
   args <- args[2:length(args)]
-  print(args)
   parse_args <- function(x) strsplit(sub("^--", "", x), "=")
   args_df <- as.data.frame(
-                            matrix(
-                                    do.call("rbind", parse_args(args)), 
-                                    ncol = 2, 
-                                    byrow = T), 
+                            do.call("rbind", parse_args(args)), 
                             stringsAsFactors = F)
   names(args_df) <- c("key", "value")
-  print(args_df)
-  q(save="no")
   if('diff' %in% args_df$key) {
     diff_file = args_df[args_df$key == 'diff', 'value']
   } else {
