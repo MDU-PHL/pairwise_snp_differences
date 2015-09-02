@@ -16,8 +16,9 @@ in the script header.
 
 A brief tutorial describing the background can be found in the file:
 
-    pairwise_snp_differences.html
+    pairwise_snp_differences.Rmd
     
 # RStudio
 
-The whole repo can be cloned, and opened as an `RStudio` project.
+The whole repo can be cloned, and opened as an `RStudio` project. Within `RStudio`
+the `.Rmd` file can be easily made into an `.html` file for viewing in a web-browser.
