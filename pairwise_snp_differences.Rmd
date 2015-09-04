@@ -2,7 +2,7 @@
 title: "Pairwise SNP difference summary"
 author: "Anders Goncalves da Silva"
 date: "26 August 2015"
-output: html_document
+output: pdf_document
 ---
 
 # The goal
@@ -17,11 +17,79 @@ The script can be downloaded [here](summarise_snp_differences.R). The script can
 
 # How to do it
 
-We can calculate summary measures of differentiation using `R`. In particular, we will use commands from two different packages:
+We can calculate summary measures of differentiation using `R`. Here, I am providing
+a script that can be run within `R` or from a command line interface.
+
+## Obtaining the script
+
+Please clone the `git-hub` repository.
+
+## Running within `R`
+
+To run within `R`, make sure the `ape` library is installed:
+
+```{r, install_lib, eval = F}
+install.packages("ape")
+```
+
+Once that is done, open the script `pairwise_snp_differences.R` in a text editor. If
+within `RStudio`, just double click on the script within the `File` pane (usually on
+the lower right). Then, edit the following lines:
+
+    ################################################################################
+    # If not running off the command line, change these parameters to point to the 
+    # approriate files, e.g.:
+    #   cat = '/home/user/cat.csv'
+    #   
+    #   To test the script substitute below as follows:
+    #   
+    #     cat_file = 'test/woodm_grouping.csv'
+    #     seq_file = 'test/woodm.fa'
+    
+    cat_file = NULL
+    
+    # Only one of these files needs to be specified. If both are specified, the
+    # diff file will have precedence
+    seq_file = NULL
+    diff_file = NULL
+    
+    # Options:
+    #   Change the following options to set output
+    #   
+    out_basename = 'snp_diff'
+    tab_fmt = "csv" # options are "csv" or "md"
+    tab_type = "pretty" # options "pretty" or "raw" --- "pretty" formats numbers in
+                          # scientific format (e.g., 1.05e-9), while "raw" gives
+                          # raw value outputs
+    fig_fmt = "png" # options are "png" or "pdf"
+    exclude_ids = NULL # a string to a path to a file with one sequence ID per
+                       # line. these sequences will be excluded from the 
+                       # analysis.
+    
+    ################################################################################
+
+Then, select the whole script, and click `run`.
+
+## From the command-line
+
+If running the script from the command-line, just type:
+
+    Rscript pairwise_snp_differences.R --help
+
+Or, if in Windows:
+
+    Rscript.exe pairwise_snp_differences.R --help
+    
+That will give you a run down of the different parameters.
+
+# Building the script
+
+Below, I outline how I got to the script. This will allow interested people to
+ammend, and expand depending on their specific needs.
 
 ## Load necessary libraries
 
-```{r, load_libs, results='hide', message=FALSE}
+```{r, load_libs, message=FALSE}
 require(ape) # a basic phylogenetic package used to load sequence data and calculate distances
 require(spider) # a DNA barcoding package with some functionality of interest
 require(geiger) # a package for macroevolutionary simulation and estimating parameters related to diversification from comparative phylogenetic data.

@@ -3,6 +3,10 @@
 This is an R script to obtain summaries of pairwise SNP differences for any 
 grouping of samples (e.g., MLST groups, monophyletic clades, etc).
 
+# Downloading the script
+
+Clone the git-hub repository. Information on the bar to the right of this window.
+
 # How it works
 
 The script can be run from the command line:
@@ -16,7 +20,7 @@ in the script header.
 
 A brief tutorial describing the background can be found in the file:
 
-    pairwise_snp_differences.Rmd
+    pairwise_snp_differences.pdf
     
 # RStudio
 
