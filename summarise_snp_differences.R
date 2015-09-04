@@ -40,6 +40,11 @@
 # If not running off the command line, change these parameters to point to the 
 # approriate files, e.g.:
 #   cat = '/home/user/cat.csv'
+#   
+#   To test the script substitute below as follows:
+#   
+#     cat_file = 'test/woodm_grouping.csv'
+#     seq_file = 'test/woodm.fa'
 
 cat_file = NULL
 

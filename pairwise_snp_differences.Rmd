@@ -9,9 +9,11 @@ output: html_document
 
 There might come a time when it would be interesting to measure just how different clades are, or how distinct are different classification schemes (e.g., MLST categories). We can use the output from `nullabor`, in particular, the alignment of the SNPs across isolates, to quantify the mean distance (and other quantiles of interest), in terms of distinct SNPs across groups of isolates.
 
+<!--
 # Download the script
 
 The script can be downloaded [here](summarise_snp_differences.R). The script can be run both interactively, within an `R` session and from the command line. Some instructions are provided in the script. This script has **NOT** been run on a Windows machine. Please let me know if you have problems.
+-->
 
 # How to do it
 
@@ -31,13 +33,16 @@ If you don't have them, just use the `install.packages()` command to install the
 install.packages("ape")
 ```
 
+**To run the script, you only need the `ape` package. The others are only necessary
+if you wish to run this tutorial**
+
 
 ## Load the sequence data
 
 Here, I am using some example data provided with the package `ape`. The data consists of 15 mitochondrial cytochrome `b` sequences from the woodmouse.
 
 ```{r, data_loading}
-woodm <- read.FASTA(file = "woodm.fa") # woodm.fa is a FASTA file containing multiple aligned sequences, as outputted from nullabor
+woodm <- read.FASTA(file = "test/woodm.fa") # woodm.fa is a FASTA file containing multiple aligned sequences, as outputted from nullabor
 ```
 
 It is easy to perform some basic tree-building within `R`. For instance:
@@ -85,7 +90,7 @@ In case that your data is already saved in a `CSV` or `tab` delimited file, you 
 
 # To load a CSV file do the following
 
-metadf <- read.table(file = "woodm_grouping.csv", sep = ",", header = T) 
+metadf <- read.table(file = "test/woodm_grouping.csv", sep = ",", header = T) 
 # if tab-delimited file change sep = ',' to sep = '\t'
 ```
 
