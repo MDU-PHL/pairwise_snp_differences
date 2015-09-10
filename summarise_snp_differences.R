@@ -58,9 +58,13 @@ diff_file = NULL
 #   
 out_basename = 'snp_diff'
 tab_fmt = "csv" # options are "csv" or "md"
-tab_type = "pretty" # options "pretty" or "raw" --- "pretty" formats numbers in
+tab_type = "raw" # options "pretty" or "raw" --- "pretty" formats numbers in
                       # scientific format (e.g., 1.05e-9), while "raw" gives
                       # raw value outputs
+fig_type = "median" # option to print out mean +/- sd and range ("mean") or
+                  # median +/- interquartile range ("median")
+fig_filter = "both" # produce plot with either "inter" or "intra" or "both"
+                    # comparisons
 fig_fmt = "png" # options are "png" or "pdf"
 exclude_ids = NULL # a string to a path to a file with one sequence ID per
                    # line. these sequences will be excluded from the 
@@ -115,10 +119,14 @@ summ_distances <- function(categories, dist_obj){
                     comp = character(total_comp),
                     N = numeric(total_comp),
                     type = rep("inter-group", total_comp),
-                    mu = numeric(total_comp), 
-                    sd = numeric(total_comp), 
-                    min_dist = numeric(total_comp),
-                    max_dist = numeric(total_comp), stringsAsFactors = F)
+                    mu = numeric(total_comp), # store the mean
+                    sd = numeric(total_comp), # store the standard deviation
+                    med = numeric(total_comp), # store the median
+                    lqr = numeric(total_comp), # store the lower quartile
+                    uqr = numeric(total_comp), # store the upper quartile
+                    min_dist = numeric(total_comp), # store the min value
+                    max_dist = numeric(total_comp), # store the maximum value
+                    stringsAsFactors = F)
   n_comp = 1
   for(i in 1:n_taxa){
     g1 <- taxa[i]
@@ -143,11 +151,17 @@ summ_distances <- function(categories, dist_obj){
       if (length(tmp_dat) > 1 & max(tmp_dat) > min(tmp_dat)) {
         out[n_comp, "mu"] <- mean(tmp_dat)
         out[n_comp, "sd"] <- sd(tmp_dat)
+        out[n_comp, "med"] <- quantile(tmp_dat, p = 0.50)
+        out[n_comp, "lqr"] <- quantile(tmp_dat, p = 0.25)
+        out[n_comp, "uqr"] <- quantile(tmp_dat, p = 0.75)
         out[n_comp, "min_dist"] <- min(tmp_dat)
         out[n_comp, "max_dist"] <- max(tmp_dat)
       } else {
           out[n_comp, "mu"] <- mean(tmp_dat)
           out[n_comp, "sd"] <- 0
+          out[n_comp, "med"] <- quantile(tmp_dat, p = 0.50)
+          out[n_comp, "lqr"] <- quantile(tmp_dat, p = 0.25)
+          out[n_comp, "uqr"] <- quantile(tmp_dat, p = 0.75)
           out[n_comp, "min_dist"] <- min(tmp_dat)
           out[n_comp, "max_dist"] <- max(tmp_dat)
         }
@@ -279,20 +293,26 @@ write_summ_table <- function(summ_table,
   
   outfile = paste(outfile, file_type, sep = ".")
   if(method == 'pretty') {
-    pretty_column_names <- c("Group 1", "Group 2", "N", "Comparison", "Mean (±SD)", "Range")
+    pretty_column_names <- c("Group 1", "Group 2", "N", "Comparison", "Mean (±SD)", "Median", "Inter-Quartile Range", "Range")
     pretty_mean <- format(summ_table[,'mu'], scientific = T, digits = 3)
     pretty_sd <- format(summ_table[,'sd'], scientific = T, digits = 3)
     pretty_musd <- paste(pretty_mean, " (±", pretty_sd,")", sep = "")
+    pretty_median <- format(summ_table[,'med'], scientific = T, digits = 3)
+    pretty_lqr <- format(summ_table[,'lqr'], scientific = T, digits = 3)
+    pretty_uqr <- format(summ_table[,'uqr'], scientific = T, digits = 3)
+    pretty_iqr <- paste(pretty_lqr, pretty_uqr, sep = "; ")
     pretty_min <- format(summ_table[,'min_dist'], scientific = T, digits = 3)
     pretty_max <- format(summ_table[,'max_dist'], scientific = T, digits = 3)
     pretty_range <- paste(pretty_min, pretty_max, sep = "; ")
     tab <- data.frame(summ_table$grp1, summ_table$grp2, summ_table$type, summ_table$N)
     tab$musd <- pretty_musd
+    tab$median <- pretty_median
+    tab$iqr <- pretty_iqr
     tab$range <- pretty_range
     names(tab) <- pretty_column_names
   } else {
-    column_names <- c("Group 1", "Group 2", "Comparison", "N", "Mean", "SD", "Min", "Max")
-    tab <- summ_table[,c(1,2,4,5,6,7,8,9)]
+    column_names <- c("Group 1", "Group 2", "Comparison", "N", "Mean", "SD", "Media", "Lower IQR", "Upper IQR", "Min", "Max")
+    tab <- summ_table[,c(1,2,4,5,6,7,8,9,10,11,12)]
     names(tab) <- column_names
   }
   if(file_type == 'md') {
@@ -309,22 +329,43 @@ write_summ_table <- function(summ_table,
 # output the results to a pretty figure
 #
 
-plot_figure <- function(summ_table, outfile = NULL, file_type = 'png') {
+plot_figure <- function(summ_table, outfile = NULL, file_type = 'png', fig_type = "mean", fig_filter = "both") {
   # here, we take the output from the summarise_snp_differences function and 
   # make a plot that includes the mean, the sd, and the min/max for each of 
   # the possible comparisons
   # If outfile is specified, the figure is outputted as a png or pdf.
   require(ggplot2)
-  p1 <- ggplot(summ_table, aes(x = comp, y = mu, colour = type)) + 
-          geom_point(size = 3 ,shape = 18) + 
-          geom_errorbar(aes(ymax = mu + sd, ymin = mu - sd, width = 0.05)) + 
-          geom_point(aes(x = comp, min_dist), size = 2) +
-          geom_point(aes(x = comp, max_dist), size = 2) +
-          xlab("Pairwise comparisons") + 
-          ylab("Mean SNP distance\n(errorbars: sd; points: min/max)") +
-          scale_colour_discrete(name = "Comparison type") +
-          theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 3), 
-                legend.position="bottom")
+  tmp_tab <- summ_table
+  if(fig_filter == 'inter') {
+    tmp_tab <- summ_table[summ_table$type == "inter-group",]
+  } else if (fig_filter == 'intra') {
+    tmp_tab <- summ_table[summ_table$type == "intra-group",]
+  }
+  
+  if(fig_type == 'mean'){
+    p1 <- ggplot(tmp_tab, aes(x = comp, y = mu, colour = type)) + 
+            geom_point(size = 3 ,shape = 18) + 
+            geom_errorbar(aes(ymax = mu + sd, ymin = mu - sd, width = 0.05)) + 
+            geom_point(aes(x = comp, min_dist), size = 2) +
+            geom_point(aes(x = comp, max_dist), size = 2) +
+            xlab("Pairwise comparisons") + 
+            ylab("Mean SNP distance\n(errorbars: sd; points: min/max)") +
+            scale_colour_discrete(name = "Comparison type") +
+            theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 3), 
+                  legend.position="bottom")
+  } else if(fig_type == 'median') {
+    p1 <- ggplot(tmp_tab, aes(x = comp, y = med, colour = type)) + 
+      geom_point(size = 3 ,shape = 18) + 
+      geom_errorbar(aes(ymax = uqr, ymin = lqr, width = 0.05)) + 
+      geom_point(aes(x = comp, min_dist), size = 2) +
+      geom_point(aes(x = comp, max_dist), size = 2) +
+      xlab("Pairwise comparisons") + 
+      ylab("Median SNP distance\n(errorbars: inter-quartile range; points: min/max)") +
+      scale_colour_discrete(name = "Comparison type") +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 3), 
+            legend.position="bottom")
+  }
+  
   if(is.null(outfile)) {
     print(p1)
   } else {
@@ -349,7 +390,9 @@ main <- function(categories,
                  diff_file = NULL, 
                  out_base = NULL, 
                  tab_fmt = NULL,
-                 tab_type = NULL, 
+                 tab_type = NULL,
+                 fig_filter = NULL,
+                 fig_type = NULL,
                  fig_fmt = NULL,
                  exclude_ids = NULL) {
   # Load some necessary libraries
@@ -379,8 +422,10 @@ main <- function(categories,
   
     #output figure
     plot_figure(summ_table = results,
-              file_type = fig_fmt, 
-              outfile = outf_b)
+                fig_filter = fig_filter,
+                fig_type = fig_type,
+                file_type = fig_fmt, 
+                outfile = outf_b)
   }
 }
 
@@ -416,6 +461,12 @@ if(!interactive()) {
                             \"csv\" or \"md\" for CSV or Markdown, respectively
         --tab_type        - make table \"pretty\" by formatting numbers or 
                               or output \"raw\" numbers (default: \"pretty\")
+        --fig_filter      - either \"both\", \"intra\", or \"inter\" if wanting
+                            to plot both inter and intra distance comparisons on 
+                            the same plot, or only intra or inter, respectively
+                            (default: \"both\")
+        --fig_type        - output figure of mean +/- sd and range (\"mean\") or
+                            median +/- inter-quartile range (\"median\")
         --fig_fmt         - output format for figure (default: \"png\")
                             \"png\" or \"pdf\" for PNG or PDF, respectively
         --exclude_ids     - string defining the path to a file with sequence
@@ -454,7 +505,9 @@ main(categories = cat_file,
      diff_file = diff_file, 
      out_base = out_basename, 
      tab_fmt = tab_fmt, 
-     tab_type = tab_type, 
+     tab_type = tab_type,
+     fig_filter = fig_filter,
+     fig_type = fig_type,
      fig_fmt = fig_fmt,
      exclude_ids = exclude_ids)
 
