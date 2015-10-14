@@ -61,23 +61,42 @@ tab_fmt = "csv" # options are "csv" or "md"
 tab_type = "raw" # options "pretty" or "raw" --- "pretty" formats numbers in
                       # scientific format (e.g., 1.05e-9), while "raw" gives
                       # raw value outputs
+fig_fmt = "png"     # options are "png" or "pdf"
 fig_type = "median" # option to print out mean +/- sd and range ("mean") or
                   # median +/- interquartile range ("median")
 fig_filter = "both" # produce plot with either "inter" or "intra" or "both"
                     # comparisons
-fig_fmt = "png" # options are "png" or "pdf"
+                    # it will also accept "specific". If this flag is set
+                    # then comparison below must also be set. This flag 
+                    # will limit to plotting only comparisons that include
+                    # the group specified in "comp" below.
+fig_comp = NULL     # A string that specifies a unique cat:group pair found in your
+                    # categories file.
+                    # here cat refers to a column name heading, and group refers
+                    # to one of the grouping units within that column.
+                    # (e.g., 'clade:clade_a' in the test file). Note it must be
+                    # specified with the colon mark.
 exclude_ids = NULL # a string to a path to a file with one sequence ID per
                    # line. these sequences will be excluded from the 
                    # analysis.
+save_long = FALSE  # 
 
 ################################################################################
 
+################################################################################
+# for testing purposes
+     cat_file = 'test/woodm_grouping.csv'
+     seq_file = 'test/woodm.fa'
+     fig_filter = 'specific'
+     fig_comp = 'clade:clade_a'
+     save_long = TRUE
 
+################################################################################
 
 ################################################################################
 # The function that summarises the data
 #  
-summ_distances <- function(categories, dist_obj){
+summ_distances <- function(categories, dist_obj, save_long, outfile){
   #dist_obj is a distance object produced by using the dist.dna() function of ape
   #categories is a data.frame with two columns:
   #   - seq_id: that matches the sequence ids in dist_obj
@@ -127,6 +146,19 @@ summ_distances <- function(categories, dist_obj){
                     min_dist = numeric(total_comp), # store the min value
                     max_dist = numeric(total_comp), # store the maximum value
                     stringsAsFactors = F)
+  if (save_long) {
+    n_inds <- nrow(dat)
+    n_entries = n_inds^2
+    out_long <- data.frame(taxa1 = character(n_entries),
+                           taxa2 = character(n_entries),
+                           grp1 = character(n_entries),
+                           grp2 = character(n_entries),
+                           type = rep("inter-group", n_entries),
+                           count = numeric(n_entries),
+                           stringsAsFactors = F)
+    outlong_fn = paste(outfile, "_long.csv", sep = "")
+    count_entries = 1
+  }
   n_comp = 1
   for(i in 1:n_taxa){
     g1 <- taxa[i]
@@ -135,6 +167,32 @@ summ_distances <- function(categories, dist_obj){
       g2 <- taxa[j]
       seq_2 <- as.character(categories[categories$groups == g2, 'seq_id'])
       tmp_dat <- dat[seq_1, seq_2]
+      if (save_long) {
+        for (ii in 1:length(seq_1)) {
+          for (jj in 1:length(seq_2)) {
+            out_long[count_entries,'taxa1'] = seq_1[ii]
+            out_long[count_entries,'taxa2'] = seq_2[jj]
+            out_long[count_entries,'grp1'] = g1
+            out_long[count_entries,'grp2'] = g2
+            if (i == j) {
+              out_long[count_entries,'type'] = 'intra-group'
+            }
+            out_long[count_entries,'count'] = dat[seq_1[ii], seq_2[jj]]
+            count_entries = count_entries + 1
+          }
+        }
+        if (n_entries - count_entries < 100) {
+          # in case we start to run out of space
+          tmp_long <- data.frame(taxa1 = character(n_entries),
+                                 taxa2 = character(n_entries),
+                                 grp1 = character(n_entries),
+                                 grp2 = character(n_entries),
+                                 type = rep("inter-group", n_entries),
+                                 count = numeric(n_entries),
+                                 stringsAsFactors = F)
+          out_long <- rbind(out_long, tmp_long)
+        }
+      }
       out[n_comp, "grp1"] <- g1
       out[n_comp, "grp2"] <- g2
       out[n_comp, "N"] <- length(tmp_dat)
@@ -170,6 +228,10 @@ summ_distances <- function(categories, dist_obj){
   }
   out$type <- factor(out$type, levels = c("intra-group", "inter-group"))
   out$comp <- factor(out$comp, levels = out$comp[order(out$type, out$comp)])
+  if (save_long) {
+    out_long <- out_long[1:(count_entries-1),]
+    write.table(x = out_long, file = outlong_fn, quote = F, sep = ",", row.names = F)
+  }
   return(out)
 }
 
@@ -329,7 +391,11 @@ write_summ_table <- function(summ_table,
 # output the results to a pretty figure
 #
 
-plot_figure <- function(summ_table, outfile = NULL, file_type = 'png', fig_type = "mean", fig_filter = "both") {
+plot_figure <- function(summ_table, outfile = NULL, 
+                        file_type = 'png', 
+                        fig_type = "mean", 
+                        fig_filter = "both",
+                        fig_comp = NULL) {
   # here, we take the output from the summarise_snp_differences function and 
   # make a plot that includes the mean, the sd, and the min/max for each of 
   # the possible comparisons
@@ -338,8 +404,13 @@ plot_figure <- function(summ_table, outfile = NULL, file_type = 'png', fig_type 
   tmp_tab <- summ_table
   if(fig_filter == 'inter') {
     tmp_tab <- summ_table[summ_table$type == "inter-group",]
+    outfile = paste(outfile, "inter", sep = "_")
   } else if (fig_filter == 'intra') {
     tmp_tab <- summ_table[summ_table$type == "intra-group",]
+    outfile = paste(outfile, "intra", sep = "_")
+  } else if (fig_filter == "specific" && !is.null(fig_comp)) {
+    tmp_tab <- summ_table[grepl(pattern = fig_comp, x = summ_table$comp),]
+    outfile = paste(outfile, fig_comp, sep = "_")
   }
   
   if(fig_type == 'mean'){
@@ -394,9 +465,34 @@ main <- function(categories,
                  fig_filter = NULL,
                  fig_type = NULL,
                  fig_fmt = NULL,
-                 exclude_ids = NULL) {
+                 fig_comp = NULL,
+                 exclude_ids = NULL,
+                 save_long = NULL) {
+  ################################################################################
+  ## check dependencies
+  
+  miss_packages = c()
+  
+  if(!require(ggplot2, quietly = T)) {
+    miss_packages = c(miss_packages, "ggplot2")
+  }
+  
+  if(!require(ape, quietly = T)){
+    miss_packages = c(miss_packages, "ape")
+  }
+  
+#   if(!require(DT, quietly = T)) {
+#     miss_packages = c(miss_packages, "DT")
+#   }
+  
+  if (length(miss_packages) >= 1) {
+    mp <- paste(miss_packages, sep = ",", collapse = "")
+    stop(paste("It seems we are missing some dependencies: ", mp, ". To install type the following:\n
+               install.packages(c(\'",mp,"\'))", sep = ""))
+  }
   # Load some necessary libraries
-  require(ape)
+  library(ape)
+  library(ggplot2)
   
   #load the categories
   cats_list <- read_cat_file(categories = categories, exclude_ids = exclude_ids)
@@ -410,9 +506,19 @@ main <- function(categories,
   
   #summarise the information
   cats <- names(cats_list)
+  #check fig.comp, and parse
+  if (!is.null(fig_comp)) {
+    tmp <- strsplit(x = fig_comp, ":")
+    cat_keep <- tmp[[1]][1]
+    fig_comp <- tmp[[1]][2]
+    cats <- cats[which(cats %in% cat_keep)]
+  }
   for(cat in cats) {
     outf_b <- paste(out_base, cat, sep = "_")
-    results <- summ_distances(categories = cats_list[[cat]], dist_obj = dist_obj)
+    results <- summ_distances(categories = cats_list[[cat]], 
+                              dist_obj = dist_obj, 
+                              save_long = save_long,
+                              outfile = outf_b)
   
     #output table
     write_summ_table(summ_table = results, 
@@ -424,7 +530,8 @@ main <- function(categories,
     plot_figure(summ_table = results,
                 fig_filter = fig_filter,
                 fig_type = fig_type,
-                file_type = fig_fmt, 
+                file_type = fig_fmt,
+                fig_comp = fig_comp,
                 outfile = outf_b)
   }
 }
@@ -461,14 +568,28 @@ if(!interactive()) {
                             \"csv\" or \"md\" for CSV or Markdown, respectively
         --tab_type        - make table \"pretty\" by formatting numbers or 
                               or output \"raw\" numbers (default: \"pretty\")
-        --fig_filter      - either \"both\", \"intra\", or \"inter\" if wanting
-                            to plot both inter and intra distance comparisons on 
-                            the same plot, or only intra or inter, respectively
+        --fig_filter      - one of \"both\", \"intra\", \"inter\", or \"specific\".
+                            use \"both\", \"intra\" or \"inter\" if wanting to plot 
+                            both inter and intra distance comparisons on 
+                            the same plot, or only intra or inter, respectively.
+                            if wanting to plot just comparisons that include a 
+                            single category, use \"specific\", and then specify
+                            the group name in --fig_comp.
                             (default: \"both\")
+        --fig_comp        - when specifying --fig_filter=\"specific\", this must
+                            be specified. A string identifying one category in the 
+                            comp file to plot (e.g., \"clade:clade_a\"). To avoid saving
+                            over previous analyses, the group name is added as an
+                            extension. Note the use of the colon to specify the 
+                            category (i.e., column in the cat file) and group 
+                            (i.e., name of the grouping unit within that column).
         --fig_type        - output figure of mean +/- sd and range (\"mean\") or
                             median +/- inter-quartile range (\"median\")
         --fig_fmt         - output format for figure (default: \"png\")
                             \"png\" or \"pdf\" for PNG or PDF, respectively
+        --save_long       - \"TRUE\" or \"FALSE\" if wanting to save the raw data
+                            in long format, along with with all the additional
+                            metadata (default: \"FALSE\")
         --exclude_ids     - string defining the path to a file with sequence
                             ids to be excluded, one per line (default: None)
         --help            - print this text
@@ -509,6 +630,8 @@ main(categories = cat_file,
      fig_filter = fig_filter,
      fig_type = fig_type,
      fig_fmt = fig_fmt,
+     fig_comp = fig_comp,
+     save_long = save_long,
      exclude_ids = exclude_ids)
 
 cat("The script has ended successfully!\n")
