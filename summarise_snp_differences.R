@@ -85,11 +85,11 @@ save_long = FALSE  #
 
 ################################################################################
 # for testing purposes
-     cat_file = 'test/woodm_grouping.csv'
-     seq_file = 'test/woodm.fa'
-     fig_filter = 'specific'
-     fig_comp = 'clade:clade_a'
-     save_long = TRUE
+#      cat_file = 'test/woodm_grouping.csv'
+#      seq_file = 'test/woodm.fa'
+#      fig_filter = 'specific'
+#      fig_comp = 'clade:clade_a'
+#      save_long = TRUE
 
 ################################################################################
 
