@@ -57,28 +57,39 @@ diff_file = NULL
 #   Change the following options to set output
 #   
 out_basename = 'snp_diff'
+model = 'N'   # model to use when calculating pairwise differences between
+# sequences when an alignment is supplied. Options: 
+#     'N': count of SNP differences
+#     'raw': proportion of SNP differences
+#     'JC69': Jukes-Cantor 1969
+#     'K80': Kimura 1980
+#     additional options specified in ape::dist.dna() function
 tab_fmt = "csv" # options are "csv" or "md"
 tab_type = "raw" # options "pretty" or "raw" --- "pretty" formats numbers in
-                      # scientific format (e.g., 1.05e-9), while "raw" gives
-                      # raw value outputs
+# scientific format (e.g., 1.05e-9), while "raw" gives
+# raw value outputs
 fig_fmt = "png"     # options are "png" or "pdf"
 fig_type = "median" # option to print out mean +/- sd and range ("mean") or
-                  # median +/- interquartile range ("median")
+# median +/- interquartile range ("median")
+fig_minmax = TRUE # whether to plot the min/max in the plot. Plotting 
+# the min/max can lead to difficult to read plots,
+# espectially if the max is very different from 
+# the median.
 fig_filter = "both" # produce plot with either "inter" or "intra" or "both"
-                    # comparisons
-                    # it will also accept "specific". If this flag is set
-                    # then comparison below must also be set. This flag 
-                    # will limit to plotting only comparisons that include
-                    # the group specified in "comp" below.
+# comparisons
+# it will also accept "specific". If this flag is set
+# then comparison below must also be set. This flag 
+# will limit to plotting only comparisons that include
+# the group specified in "comp" below.
 fig_comp = NULL     # A string that specifies a unique cat:group pair found in your
-                    # categories file.
-                    # here cat refers to a column name heading, and group refers
-                    # to one of the grouping units within that column.
-                    # (e.g., 'clade:clade_a' in the test file). Note it must be
-                    # specified with the colon mark.
+# categories file.
+# here cat refers to a column name heading, and group refers
+# to one of the grouping units within that column.
+# (e.g., 'clade:clade_a' in the test file). Note it must be
+# specified with the colon mark.
 exclude_ids = NULL # a string to a path to a file with one sequence ID per
-                   # line. these sequences will be excluded from the 
-                   # analysis.
+# line. these sequences will be excluded from the 
+# analysis.
 save_long = FALSE  # 
 
 ################################################################################
@@ -215,16 +226,16 @@ summ_distances <- function(categories, dist_obj, save_long, outfile){
         out[n_comp, "min_dist"] <- min(tmp_dat)
         out[n_comp, "max_dist"] <- max(tmp_dat)
       } else {
-          out[n_comp, "mu"] <- mean(tmp_dat)
-          out[n_comp, "sd"] <- 0
-          out[n_comp, "med"] <- quantile(tmp_dat, p = 0.50)
-          out[n_comp, "lqr"] <- quantile(tmp_dat, p = 0.25)
-          out[n_comp, "uqr"] <- quantile(tmp_dat, p = 0.75)
-          out[n_comp, "min_dist"] <- min(tmp_dat)
-          out[n_comp, "max_dist"] <- max(tmp_dat)
-        }
-      n_comp = n_comp + 1
+        out[n_comp, "mu"] <- mean(tmp_dat)
+        out[n_comp, "sd"] <- 0
+        out[n_comp, "med"] <- quantile(tmp_dat, p = 0.50)
+        out[n_comp, "lqr"] <- quantile(tmp_dat, p = 0.25)
+        out[n_comp, "uqr"] <- quantile(tmp_dat, p = 0.75)
+        out[n_comp, "min_dist"] <- min(tmp_dat)
+        out[n_comp, "max_dist"] <- max(tmp_dat)
       }
+      n_comp = n_comp + 1
+    }
   }
   out$type <- factor(out$type, levels = c("intra-group", "inter-group"))
   out$comp <- factor(out$comp, levels = out$comp[order(out$type, out$comp)])
@@ -233,7 +244,7 @@ summ_distances <- function(categories, dist_obj, save_long, outfile){
     write.table(x = out_long, file = outlong_fn, quote = F, sep = ",", row.names = F)
   }
   return(out)
-}
+  }
 
 ################################################################################
 
@@ -253,10 +264,13 @@ read_cat_file <- function(categories, exclude_ids = NULL) {
     file_sep = '\t'
   }
   cat_df <- read.table(file = categories, 
-               header = TRUE, 
-               check.names = F, 
-               sep = file_sep,
-               stringsAsFactors = F)
+                       header = TRUE, 
+                       check.names = F, 
+                       sep = file_sep,
+                       stringsAsFactors = F,
+                       ## added to remove any white spaces that might
+                       ## cause problems when comparing with sequence data
+                       strip.white = TRUE)
   if(!is.null(exclude_ids)) {
     exclude_ids <- read.table(file = exclude_ids, 
                               header = F, 
@@ -285,6 +299,8 @@ read_cat_file <- function(categories, exclude_ids = NULL) {
     warning("Number of identified columns in category file is >2, 
             assuming that the first column contains the sequence IDs")
     cats <- names(cat_df)[-1]
+    # added gsub to strip any white spaces. found it causes error when
+    # matching cats to sequence data
     seqid <- names(cat_df)[1]
     cat_list <- lapply(cats, function(cat) subset(cat_df, select = c(seqid, cat)))
     names(cat_list) <- cats
@@ -298,7 +314,7 @@ read_cat_file <- function(categories, exclude_ids = NULL) {
 # if running off a FASTA file, it is necessary to calculate the pairwise distance
 # matrix.
 
-calc_pairwise_distance <- function(seq_file, model = 'raw') {
+calc_pairwise_distance <- function(seq_file, model = 'N') {
   # this function takes as input a string defining a path to a FASTA file
   # and a string to pass on to the function dna.dist() specifying the distance
   # model to use. 
@@ -307,12 +323,12 @@ calc_pairwise_distance <- function(seq_file, model = 'raw') {
   # measure if, however, finite mutation models are required to account for 
   # mutation saturation, other methods can be used. Type ?dna.dist to read the 
   # manual page.
-   
+  
   if(!file.exists(seq_file)) {
     stop(paste("Could not find file:", seq_file, "\n"))  
-    }
+  }
   seq_data <- read.FASTA(file = seq_file)
-  raw_dist <- dist.dna(x = seq_data, model = "raw")
+  raw_dist <- dist.dna(x = seq_data, model = model)
   return(raw_dist)
 }
 
@@ -329,12 +345,12 @@ read_diff_file <- function(diff_file) {
     file_sep = '\t'
   }
   diff_mat <- as.matrix(
-                read.table(file = diff_file, 
-                         header = TRUE, 
-                         row.names = 1, 
-                         check.names = F, 
-                         sep = file_sep)
-                )
+    read.table(file = diff_file, 
+               header = TRUE, 
+               row.names = 1, 
+               check.names = F, 
+               sep = file_sep)
+  )
   return(diff_mat)
 }
 
@@ -373,8 +389,8 @@ write_summ_table <- function(summ_table,
     tab$range <- pretty_range
     names(tab) <- pretty_column_names
   } else {
-    column_names <- c("Group 1", "Group 2", "Comparison", "N", "Mean", "SD", "Media", "Lower IQR", "Upper IQR", "Min", "Max")
-    tab <- summ_table[,c(1,2,4,5,6,7,8,9,10,11,12)]
+    column_names <- c("Group 1", "Group 2", "Comparison", "N", "Mean", "SD", "Median", "Lower IQR", "Upper IQR", "Min", "Max")
+    tab <- summ_table[,c(1,2,5,4,6,7,8,9,10,11,12)]
     names(tab) <- column_names
   }
   if(file_type == 'md') {
@@ -395,6 +411,7 @@ plot_figure <- function(summ_table, outfile = NULL,
                         file_type = 'png', 
                         fig_type = "mean", 
                         fig_filter = "both",
+                        fig_minmax = TRUE,
                         fig_comp = NULL) {
   # here, we take the output from the summarise_snp_differences function and 
   # make a plot that includes the mean, the sd, and the min/max for each of 
@@ -415,26 +432,39 @@ plot_figure <- function(summ_table, outfile = NULL,
   
   if(fig_type == 'mean'){
     p1 <- ggplot(tmp_tab, aes(x = comp, y = mu, colour = type)) + 
-            geom_point(size = 3 ,shape = 18) + 
-            geom_errorbar(aes(ymax = mu + sd, ymin = mu - sd, width = 0.05)) + 
-            geom_point(aes(x = comp, min_dist), size = 2) +
-            geom_point(aes(x = comp, max_dist), size = 2) +
-            xlab("Pairwise comparisons") + 
-            ylab("Mean SNP distance\n(errorbars: sd; points: min/max)") +
-            scale_colour_discrete(name = "Comparison type") +
-            theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 3), 
-                  legend.position="bottom")
+      geom_point(size = 3 ,shape = 18) + 
+      geom_errorbar(aes(ymax = mu + sd, ymin = mu - sd, width = 0.05)) + 
+      #             geom_point(aes(x = comp, min_dist), size = 2) +
+      #             geom_point(aes(x = comp, max_dist), size = 2) +
+      xlab("Pairwise comparisons") + 
+      #      ylab("Mean SNP distance\n(errorbars: sd; points: min/max)") +
+      scale_colour_discrete(name = "Comparison type") +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 3), 
+            legend.position="bottom")
+    ylab <- "Mean SNP distance\n(errorbars: sd"
   } else if(fig_type == 'median') {
     p1 <- ggplot(tmp_tab, aes(x = comp, y = med, colour = type)) + 
       geom_point(size = 3 ,shape = 18) + 
       geom_errorbar(aes(ymax = uqr, ymin = lqr, width = 0.05)) + 
+      #       geom_point(aes(x = comp, min_dist), size = 2) +
+      #       geom_point(aes(x = comp, max_dist), size = 2) +
+      xlab("Pairwise comparisons") + 
+      #      ylab("Median SNP distance\n(errorbars: inter-quartile range; points: min/max)") +
+      scale_colour_discrete(name = "Comparison type") +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 10), 
+            legend.position="bottom")
+    ylab <- "Median SNP distance\n(errorbars: inter-quartile range"
+  }
+  
+  if (fig_minmax) {
+    p1 <- p1 +
       geom_point(aes(x = comp, min_dist), size = 2) +
       geom_point(aes(x = comp, max_dist), size = 2) +
-      xlab("Pairwise comparisons") + 
-      ylab("Median SNP distance\n(errorbars: inter-quartile range; points: min/max)") +
-      scale_colour_discrete(name = "Comparison type") +
-      theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 3), 
-            legend.position="bottom")
+      ylab(paste(ylab," ; points: min/max)", sep = ""))
+  } else {
+    outfile <- paste(outfile, "_no_minmax", sep = "")
+    p1 <- p1 +
+      ylab(paste(ylab, ")", sep = ""))
   }
   
   if(is.null(outfile)) {
@@ -459,13 +489,15 @@ plot_figure <- function(summ_table, outfile = NULL,
 main <- function(categories, 
                  seq_file = NULL, 
                  diff_file = NULL, 
-                 out_base = NULL, 
+                 out_base = NULL,
+                 model = NULL,
                  tab_fmt = NULL,
                  tab_type = NULL,
                  fig_filter = NULL,
                  fig_type = NULL,
                  fig_fmt = NULL,
                  fig_comp = NULL,
+                 fig_minmax = NULL,
                  exclude_ids = NULL,
                  save_long = NULL) {
   ################################################################################
@@ -481,9 +513,9 @@ main <- function(categories,
     miss_packages = c(miss_packages, "ape")
   }
   
-#   if(!require(DT, quietly = T)) {
-#     miss_packages = c(miss_packages, "DT")
-#   }
+  #   if(!require(DT, quietly = T)) {
+  #     miss_packages = c(miss_packages, "DT")
+  #   }
   
   if (length(miss_packages) >= 1) {
     mp <- paste(miss_packages, sep = ",", collapse = "")
@@ -499,7 +531,7 @@ main <- function(categories,
   
   #load the data
   if(is.null(diff_file)) {
-    dist_obj <- calc_pairwise_distance(seq_file = seq_file, model = "raw")
+    dist_obj <- calc_pairwise_distance(seq_file = seq_file, model = model)
   } else {
     dist_obj <- read_diff_file(diff_file = diff_file)
   }
@@ -519,22 +551,23 @@ main <- function(categories,
                               dist_obj = dist_obj, 
                               save_long = save_long,
                               outfile = outf_b)
-  
+    
     #output table
     write_summ_table(summ_table = results, 
                      file_type = tab_fmt, 
                      method = tab_type,
                      outfile = outf_b)
-  
+    
     #output figure
     plot_figure(summ_table = results,
                 fig_filter = fig_filter,
                 fig_type = fig_type,
                 file_type = fig_fmt,
                 fig_comp = fig_comp,
+                fig_minmax = fig_minmax,
                 outfile = outf_b)
   }
-}
+  }
 
 ################################################################################
 # If running from the command line:
@@ -556,42 +589,44 @@ if(!interactive()) {
         
         Necessary arguments:
         filename    - a string defining the path to the categories file
-
+        
         Optional arguments:
         --seq=filename    - a string defining the path to
-                            the FASTA file (ignored if --diff is defined)
+        the FASTA file (ignored if --diff is defined)
         --diff=filename   - a string defining the path to 
-                            the SNP differences matrix (must be defined if no
-                            --seq is defined)
+        the SNP differences matrix (must be defined if no
+        --seq is defined)
         --out_basename    - basename for output files (default: snp_diff)
         --tab_fmt         - output format for table (default: \"csv\")
-                            \"csv\" or \"md\" for CSV or Markdown, respectively
+        \"csv\" or \"md\" for CSV or Markdown, respectively
         --tab_type        - make table \"pretty\" by formatting numbers or 
-                              or output \"raw\" numbers (default: \"pretty\")
+        or output \"raw\" numbers (default: \"pretty\")
         --fig_filter      - one of \"both\", \"intra\", \"inter\", or \"specific\".
-                            use \"both\", \"intra\" or \"inter\" if wanting to plot 
-                            both inter and intra distance comparisons on 
-                            the same plot, or only intra or inter, respectively.
-                            if wanting to plot just comparisons that include a 
-                            single category, use \"specific\", and then specify
-                            the group name in --fig_comp.
-                            (default: \"both\")
+        use \"both\", \"intra\" or \"inter\" if wanting to plot 
+        both inter and intra distance comparisons on 
+        the same plot, or only intra or inter, respectively.
+        if wanting to plot just comparisons that include a 
+        single category, use \"specific\", and then specify
+        the group name in --fig_comp.
+        (default: \"both\")
         --fig_comp        - when specifying --fig_filter=\"specific\", this must
-                            be specified. A string identifying one category in the 
-                            comp file to plot (e.g., \"clade:clade_a\"). To avoid saving
-                            over previous analyses, the group name is added as an
-                            extension. Note the use of the colon to specify the 
-                            category (i.e., column in the cat file) and group 
-                            (i.e., name of the grouping unit within that column).
+        be specified. A string identifying one category in the 
+        comp file to plot (e.g., \"clade:clade_a\"). To avoid saving
+        over previous analyses, the group name is added as an
+        extension. Note the use of the colon to specify the 
+        category (i.e., column in the cat file) and group 
+        (i.e., name of the grouping unit within that column).
         --fig_type        - output figure of mean +/- sd and range (\"mean\") or
-                            median +/- inter-quartile range (\"median\")
+        median +/- inter-quartile range (\"median\")
+        --fig_minmax      - whether or not to plot the mix/max points. Either
+        \"TRUE\" or \"FALSE\" (default: \"TRUE\")
         --fig_fmt         - output format for figure (default: \"png\")
-                            \"png\" or \"pdf\" for PNG or PDF, respectively
+        \"png\" or \"pdf\" for PNG or PDF, respectively
         --save_long       - \"TRUE\" or \"FALSE\" if wanting to save the raw data
-                            in long format, along with with all the additional
-                            metadata (default: \"FALSE\")
+        in long format, along with with all the additional
+        metadata (default: \"FALSE\")
         --exclude_ids     - string defining the path to a file with sequence
-                            ids to be excluded, one per line (default: None)
+        ids to be excluded, one per line (default: None)
         --help            - print this text
         
         Example:
@@ -605,8 +640,8 @@ if(!interactive()) {
   args <- args[2:length(args)]
   parse_args <- function(x) strsplit(sub("^--", "", x), "=")
   args_df <- as.data.frame(
-                            do.call("rbind", parse_args(args)), 
-                            stringsAsFactors = F)
+    do.call("rbind", parse_args(args)), 
+    stringsAsFactors = F)
   names(args_df) <- c("key", "value")
   if('diff' %in% args_df$key) {
     diff_file = args_df[args_df$key == 'diff', 'value']
@@ -625,12 +660,14 @@ main(categories = cat_file,
      seq_file = seq_file, 
      diff_file = diff_file, 
      out_base = out_basename, 
+     model = model,
      tab_fmt = tab_fmt, 
      tab_type = tab_type,
      fig_filter = fig_filter,
      fig_type = fig_type,
      fig_fmt = fig_fmt,
      fig_comp = fig_comp,
+     fig_minmax = fig_minmax,
      save_long = save_long,
      exclude_ids = exclude_ids)
 
